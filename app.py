@@ -1,105 +1,85 @@
-from googletrans import Translator
 import streamlit as st
-import speech_recognition as sr
-import asyncio
+from googletrans import Translator
 import edge_tts
+import asyncio
 import os
 
-# ---------------- CONFIG ----------------
-VOICE_LANGS = {
-    "English": "en-US-AriaNeural",
-    "Spanish": "es-ES-ElviraNeural"
-}
+# ---------- CONFIG ----------
+st.set_page_config(
+    page_title="Voice Translator",
+    page_icon="🎤",
+    layout="centered"
+)
 
-LANG_CODES = {
-    "Spanish": "es",
-    "English": "en"
-}
-
-STT_CODES = {
-    "Spanish": "es-ES",
-    "English": "en-US"
-}
-
-AUDIO_DIR = "audio"
-AUDIO_FILE = os.path.join(AUDIO_DIR, "voice.wav")
-os.makedirs(AUDIO_DIR, exist_ok=True)
-
-# ---------------- TTS ----------------
-async def speak(text, voice):
-    communicate = edge_tts.Communicate(text, voice)
-    await communicate.save(AUDIO_FILE)
-
-def speak_sync(text, voice):
-    asyncio.run(speak(text, voice))
-
-# ---------------- STREAMLIT UI ----------------
-st.set_page_config(page_title="Voice Translator", layout="centered")
-
+# ---------- HEADER ----------
 st.title("🎤 Voice Translator")
 st.caption("Voice translation with premium neural voices")
 
 if os.path.exists("logo.jpg"):
-    st.image("logo.jpg", width=150)
+    st.image("logo.jpg", width=200)
 
+# ---------- TRANSLATOR ----------
 translator = Translator()
 
-input_lang = st.selectbox("🗣 Spoken language", ["Spanish", "English"])
-output_lang = st.selectbox("🌍 Translate to", ["English", "Spanish"])
+languages = {
+    "Spanish": "es",
+    "English": "en",
+    "French": "fr",
+    "Italian": "it",
+    "Portuguese": "pt",
+    "German": "de"
+}
 
-st.divider()
-st.write("### 🎧 Voice input")
+voices = {
+    "en": "en-US-JennyNeural",
+    "es": "es-ES-ElviraNeural",
+    "fr": "fr-FR-DeniseNeural",
+    "it": "it-IT-ElsaNeural",
+    "pt": "pt-BR-FranciscaNeural",
+    "de": "de-DE-KatjaNeural"
+}
 
-recognizer = sr.Recognizer()
+# ---------- UI ----------
+text = st.text_area("✍️ Text to translate", height=120)
 
-if st.button("🎙️ Start listening"):
-    with sr.Microphone() as source:
-        st.info("Listening... Speak a FULL sentence")
+from_lang = st.selectbox("🗣️ Source language", list(languages.keys()), index=0)
+to_lang = st.selectbox("🌍 Translate to", list(languages.keys()), index=1)
 
-        # --- AJUSTES CLAVE PARA NO CORTAR FRASES ---
-        recognizer.adjust_for_ambient_noise(source, duration=1)
+# ---------- FUNCTION ----------
+async def generate_voice(text, lang_code):
+    voice = voices.get(lang_code, "en-US-JennyNeural")
+    audio_path = "audio/output.mp3"
 
-        recognizer.energy_threshold = 300
-        recognizer.dynamic_energy_threshold = True
+    tts = edge_tts.Communicate(text=text, voice=voice)
+    await tts.save(audio_path)
+    return audio_path
 
-        recognizer.pause_threshold = 1.2
-        recognizer.non_speaking_duration = 0.5
-
-        audio = recognizer.listen(
-            source,
-            timeout=10,            # tiempo para empezar a hablar
-            phrase_time_limit=25   # tiempo máximo de frase
-        )
-
-    try:
-        # Speech to text
-        text = recognizer.recognize_google(
-            audio,
-            language=STT_CODES[input_lang]
-        )
-
-        st.success("You said:")
-        st.write(text)
-
-        # Translation
-        translated = translator.translate(
+# ---------- ACTION ----------
+if st.button("▶️ Translate"):
+    if text.strip() == "":
+        st.warning("Please enter some text.")
+    else:
+        result = translator.translate(
             text,
-            src=LANG_CODES[input_lang],
-            dest=LANG_CODES[output_lang]
-        ).text
+            src=languages[from_lang],
+            dest=languages[to_lang]
+        )
 
-        st.success("Translated text:")
-        st.write(translated)
+        st.success("✅ Translation")
+        st.write(result.text)
 
-        # Text to speech
-        speak_sync(translated, VOICE_LANGS[output_lang])
+        with st.spinner("Generating voice..."):
+            audio_file = asyncio.run(
+                generate_voice(result.text, languages[to_lang])
+            )
 
-        audio_bytes = open(AUDIO_FILE, "rb").read()
-        st.audio(audio_bytes, format="audio/wav")
+        st.audio(audio_file)
 
-    except Exception:
-        st.error("❌ Could not understand the audio")
+# ---------- FOOTER ----------
+st.markdown("---")
+st.markdown(
+    "<div style='text-align:center; color:gray;'>Made by Carlos Macea</div>",
+    unsafe_allow_html=True
+)
 
-st.divider()
-st.caption("Made by Carlos Macea")
 
